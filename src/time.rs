@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use anyhow::Error;
 use chrono::Local;
-use futures_async_stream::async_try_stream;
+use futures_async_stream::try_stream;
 
 use crate::{Block, BlockData, BlockState};
 
@@ -15,7 +15,7 @@ impl TimeBlock {
 }
 
 impl Block for TimeBlock {
-    #[async_try_stream(boxed, ok = BlockData, error = Error)]
+    #[try_stream(boxed, ok = BlockData, error = Error)]
     async fn block_data_stream(&mut self) {
         loop {
             yield BlockData {

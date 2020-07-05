@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use anyhow::{Error, Result};
 use futures::{stream, stream::StreamExt};
-use futures_async_stream::{async_try_stream, for_await};
+use futures_async_stream::{try_stream, for_await};
 
 use crate::{
     backlight::BacklightBlock,
@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub trait Block {
-    #[async_try_stream(boxed, ok = BlockData, error = Error)]
+    #[try_stream(boxed, ok = BlockData, error = Error)]
     async fn block_data_stream(&mut self);
 }
 

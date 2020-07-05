@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::{anyhow, Error, Result};
 use futures::stream::StreamExt;
-use futures_async_stream::async_try_stream;
+use futures_async_stream::try_stream;
 use inotify::{Inotify, WatchMask};
 
 use crate::{Block, BlockData, BlockState};
@@ -57,13 +57,13 @@ impl BacklightBlock {
 }
 
 impl Block for BacklightBlock {
-    #[async_try_stream(boxed, ok = BlockData, error = Error)]
+    #[try_stream(boxed, ok = BlockData, error = Error)]
     async fn block_data_stream(&mut self) {
         let mut buffer = [0u8; 1024];
         let mut stream = self.inotify.event_stream(&mut buffer[..]).unwrap();
 
         yield self.new_block_data()?;
-        while let Some(_) = stream.next().await {
+        while stream.next().await.is_some() {
             yield self.new_block_data()?;
         }
         unreachable!("inotify's stream is infinite")

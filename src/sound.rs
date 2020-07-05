@@ -6,7 +6,7 @@ use alsa::{
     Mixer,
 };
 use anyhow::{Error, Result};
-use futures_async_stream::async_try_stream;
+use futures_async_stream::try_stream;
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task,
@@ -31,6 +31,9 @@ impl SoundBlock {
         let (tx, rx) = mpsc::channel(10);
         task::spawn_blocking(move || {
             // Not `Send` so must be done here
+            // FIXME: Track default device changes
+            // TODO: Click to swap output device
+            // TODO: Show battery level for bluetooth device?
             let selem_id = SelemId::new("Master", 0);
             let selem = mixer.find_selem(&selem_id).unwrap();
 
@@ -51,7 +54,7 @@ impl SoundBlock {
 }
 
 impl Block for SoundBlock {
-    #[async_try_stream(boxed, ok = BlockData, error = Error)]
+    #[try_stream(boxed, ok = BlockData, error = Error)]
     async fn block_data_stream(&mut self) {
         while let Some(sound_state) = self.rx.recv().await {
             let volume = if sound_state.muted {

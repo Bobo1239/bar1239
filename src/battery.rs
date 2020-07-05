@@ -1,6 +1,6 @@
 use anyhow::Error;
 use battery::{units::Energy, Manager, State};
-use futures_async_stream::async_try_stream;
+use futures_async_stream::try_stream;
 
 use crate::{Block, BlockData, BlockState};
 
@@ -14,7 +14,7 @@ impl BatteryBlock {
 }
 
 impl Block for BatteryBlock {
-    #[async_try_stream(boxed, ok = BlockData, error = Error)]
+    #[try_stream(boxed, ok = BlockData, error = Error)]
     async fn block_data_stream(&mut self) {
         // Seems like there's no way to get notified about charging state changes so the best we
         // can do is poll continuously; battery internally uses the sysfs which seems to be the only
