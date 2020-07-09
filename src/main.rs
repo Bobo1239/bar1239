@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use anyhow::{Error, Result};
 use futures::{stream, stream::StreamExt};
-use futures_async_stream::{try_stream, for_await};
+use futures_async_stream::{for_await, try_stream};
 
 use crate::{
     backlight::BacklightBlock,

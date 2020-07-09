@@ -25,28 +25,31 @@ struct SoundState {
 
 impl SoundBlock {
     pub fn new() -> Result<SoundBlock> {
-        let mixer = Mixer::new("default", false)?;
-
         // TODO: Unsure if this is the most optimal channel...
         let (tx, rx) = mpsc::channel(10);
         task::spawn_blocking(move || {
-            // Not `Send` so must be done here
-            // FIXME: Track default device changes
             // TODO: Click to swap output device
             // TODO: Show battery level for bluetooth device?
-            let selem_id = SelemId::new("Master", 0);
-            let selem = mixer.find_selem(&selem_id).unwrap();
-
-            // Needs to be called once before we enter the loop (`assert` fails otherwise)
-            mixer.handle_events().unwrap();
-            send_current_state(&selem, &tx);
-
             loop {
-                mixer.wait(None).unwrap();
-                let events = mixer.handle_events().unwrap();
-                assert!(events > 0);
+                let mut mixer = Mixer::new("default", false).unwrap();
+                let selem_id = SelemId::new("Master", 0);
+                loop {
+                    // Terrible hack...; This provokes an error from mixer.handle_events() whenever
+                    // an event happens (default device change; volume change); We then create a
+                    // `Mixer` to track default device changes which doesn't seem possible to do
+                    // with a single `Mixer`. There may be a better way though...
+                    mixer
+                        .attach(&std::ffi::CString::new("default").unwrap())
+                        .unwrap();
 
-                send_current_state(&selem, &tx);
+                    let selem = mixer.find_selem(&selem_id).unwrap();
+
+                    if mixer.handle_events().is_err() {
+                        break;
+                    }
+                    send_current_state(&selem, &tx);
+                    mixer.wait(None).unwrap();
+                }
             }
         });
         Ok(SoundBlock { rx })
