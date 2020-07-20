@@ -54,7 +54,7 @@ impl SoundBlock {
             context
                 .borrow_mut()
                 .set_state_callback(Some(Box::new(move || {
-                    let state = context_ref.borrow().get_state();
+                    let state = unsafe { (*context_ref.as_ptr()).get_state() };
                     match state {
                         State::Ready | State::Failed | State::Terminated => unsafe {
                             (*ml_ref.as_ptr()).signal(false);
