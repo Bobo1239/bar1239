@@ -62,12 +62,17 @@ async fn main() {
     // TODO: stop cont signals?
     // TODO: How to handle clicks?
     // TODO: Remove all unwraps
-    let mut blocks: Vec<Box<dyn Block>> = vec![
-        Box::new(SoundBlock::new().unwrap()),
-        Box::new(BacklightBlock::new().unwrap()),
-        Box::new(BatteryBlock::new()),
-        Box::new(TimeBlock::new()),
-    ];
+    let mut blocks: Vec<Box<dyn Block>> = Vec::new();
+
+    blocks.push(Box::new(SoundBlock::new().unwrap()));
+    if let Ok(backlight) = BacklightBlock::new() {
+        blocks.push(Box::new(backlight));
+    }
+    if let Ok(battery) = BatteryBlock::new() {
+        blocks.push(Box::new(battery));
+    }
+    blocks.push(Box::new(TimeBlock::new()));
+
     println!(
         "{}",
         serde_json::to_string(&SwaybarHeader {

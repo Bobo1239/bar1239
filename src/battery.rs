@@ -1,4 +1,4 @@
-use anyhow::Error;
+use anyhow::{anyhow, Error, Result};
 use battery::{units::Energy, Manager, State};
 use futures_async_stream::try_stream;
 
@@ -7,9 +7,12 @@ use crate::{Block, BlockData, BlockState};
 pub struct BatteryBlock;
 
 impl BatteryBlock {
-    pub fn new() -> BatteryBlock {
-        // TODO: Return error if no battery present; or maybe return a Result<Option<Block>> or so
-        BatteryBlock
+    pub fn new() -> Result<BatteryBlock> {
+        if Manager::new()?.batteries()?.count() > 0 {
+            Ok(BatteryBlock)
+        } else {
+            Err(anyhow!("No battery available"))
+        }
     }
 }
 
