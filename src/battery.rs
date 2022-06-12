@@ -52,7 +52,7 @@ impl Block for BatteryBlock {
                 },
             };
 
-            tokio::time::delay_for(std::time::Duration::from_millis(500)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
     }
 }

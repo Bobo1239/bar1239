@@ -1,5 +1,3 @@
-use std::env;
-
 use inotify::{EventMask, Inotify, WatchMask};
 
 fn main() {

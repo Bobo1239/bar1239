@@ -4,13 +4,12 @@ use anyhow::{anyhow, Error, Result};
 use futures_async_stream::try_stream;
 use libpulse_binding::{
     callbacks::ListResult::Item,
-    context,
     context::{
-        subscribe::{subscription_masks, Facility, Operation},
-        Context, State,
+        subscribe::{Facility, InterestMaskSet, Operation},
+        Context, FlagSet, State,
     },
     mainloop::threaded::Mainloop,
-    volume::VOLUME_NORM,
+    volume::Volume,
 };
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
@@ -66,7 +65,7 @@ impl SoundBlock {
 
         context
             .borrow_mut()
-            .connect(None, context::flags::NOFLAGS, None)
+            .connect(None, FlagSet::empty(), None)
             .map_err(|e| anyhow!(e))?;
 
         main_loop.borrow_mut().lock();
@@ -89,7 +88,7 @@ impl SoundBlock {
         }
         context.borrow_mut().set_state_callback(None);
 
-        let interest_mask = subscription_masks::SERVER | subscription_masks::SINK;
+        let interest_mask = InterestMaskSet::SERVER | InterestMaskSet::SINK;
         context.borrow_mut().subscribe(interest_mask, |_| {});
 
         {
@@ -183,7 +182,7 @@ fn send_sink_info_for_idx(context: &Rc<RefCell<Context>>, idx: u32, tx: &Sender<
                 Update::Sink {
                     idx,
                     state: SinkState {
-                        volume: sink_info.volume.avg().0 as f32 / VOLUME_NORM.0 as f32,
+                        volume: sink_info.volume.avg().0 as f32 / Volume::NORMAL.0 as f32,
                         muted: sink_info.mute,
                     },
                 },
@@ -194,13 +193,13 @@ fn send_sink_info_for_idx(context: &Rc<RefCell<Context>>, idx: u32, tx: &Sender<
 
 fn send_default_sink(context: &Rc<RefCell<Context>>, tx: &Sender<Update>) {
     let introspector = context.borrow().introspect();
-    let context_ref = Rc::clone(&context);
+    let context_ref = Rc::clone(context);
     let tx = tx.clone();
     introspector.get_server_info(move |server_info| {
         if let Some(default_sink_name) = &server_info.default_sink_name {
             let introspector = context_ref.borrow().introspect();
             let tx = tx.clone();
-            introspector.get_sink_info_by_name(&default_sink_name, move |list_result| {
+            introspector.get_sink_info_by_name(default_sink_name, move |list_result| {
                 if let Item(sink_info) = list_result {
                     send_update(&tx, Update::DefaultSink(sink_info.index))
                 }
@@ -210,7 +209,7 @@ fn send_default_sink(context: &Rc<RefCell<Context>>, tx: &Sender<Update>) {
 }
 
 fn send_update(tx: &Sender<Update>, update: Update) {
-    let mut tx = tx.clone();
+    let tx = tx.clone();
     futures::executor::block_on(async move {
         if tx.send(update).await.is_err() {
             panic!("receiver dropped");
