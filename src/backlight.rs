@@ -15,7 +15,7 @@ use inotify::{Inotify, WatchMask};
 use crate::{Block, BlockData, BlockState};
 
 pub struct BacklightBlock {
-    inotify: Inotify,
+    inotify: Option<Inotify>,
     file: File,
     max_brightness: f32,
 }
@@ -28,10 +28,10 @@ impl BacklightBlock {
         match path {
             None => Err(anyhow!("No backlight available")),
             Some(path) => {
-                let mut inotify = Inotify::init()?;
-                inotify.add_watch(&path, WatchMask::MODIFY)?;
+                let inotify = Inotify::init()?;
+                inotify.watches().add(&path, WatchMask::MODIFY)?;
                 Ok(BacklightBlock {
-                    inotify,
+                    inotify: Some(inotify),
                     file: File::open(path.join("actual_brightness"))?,
                     max_brightness: fs::read_to_string(path.join("max_brightness"))?
                         .trim()
@@ -60,7 +60,12 @@ impl Block for BacklightBlock {
     #[try_stream(boxed, ok = BlockData, error = Error)]
     async fn block_data_stream(&mut self) {
         let mut buffer = [0u8; 1024];
-        let mut stream = self.inotify.event_stream(&mut buffer[..]).unwrap();
+        let mut stream = self
+            .inotify
+            .take()
+            .unwrap()
+            .into_event_stream(&mut buffer[..])
+            .unwrap();
 
         yield self.new_block_data()?;
         while stream.next().await.is_some() {

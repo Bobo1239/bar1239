@@ -1,4 +1,4 @@
-#![feature(generators, stmt_expr_attributes, proc_macro_hygiene)]
+#![feature(coroutines, stmt_expr_attributes, proc_macro_hygiene)]
 
 mod backlight;
 mod battery;
@@ -36,8 +36,9 @@ pub struct BlockData {
     state: BlockState,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum BlockState {
+    #[default]
     Normal,
     Warning,
 }
@@ -48,12 +49,6 @@ impl BlockState {
             BlockState::Normal => "#d8d8d8",
             BlockState::Warning => "#ab4642",
         }
-    }
-}
-
-impl Default for BlockState {
-    fn default() -> BlockState {
-        BlockState::Normal
     }
 }
 
