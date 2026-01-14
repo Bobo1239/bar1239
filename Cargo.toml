@@ -15,6 +15,8 @@ inotify = "0.11.0"
 chrono = "0.4.10"
 battery = "0.7.5"
 libpulse-binding = "2.16.0"
+pipewire-native = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-native-rs.git" }
+pipewire-native-spa = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-native-rs.git" }
 
 [profile.release]
 codegen-units = 1
