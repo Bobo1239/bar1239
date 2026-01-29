@@ -14,8 +14,8 @@ use pipewire_native::{
     some_closure, types,
 };
 use pipewire_native_spa::{
-    param::{props::Prop, ParamType},
-    pod::parser::Parser,
+    param::{ParamType, props::Prop},
+    pod::{RawPodOwned, parser::Parser},
 };
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
@@ -53,20 +53,20 @@ impl SoundBlock {
 
         reg.add_listener(RegistryEvents {
             global: some_closure!([reg ^(tx)] id, _perms, type_, version, props, {
-                if type_ == types::interface::METADATA && props.get("metadata.name") == Some("default") {
+                if type_ == types::interface::METADATA &&
+                    props.get("metadata.name") == Some("default") {
                     let obj = reg.bind(id, type_, version).unwrap();
                     let metadata = obj.downcast::<Metadata>().unwrap();
 
                     metadata.add_listener(MetadataEvents {
                         property: some_closure!([^(tx)] _subject, key, _type, value, {
-                            if key == Some("default.audio.sink") {
-                                if let Some(value) = value {
-                                    const PREFIX: &str = "{\"name\":\"";
-                                    const SUFFIX: &str = "\"}";
-                                    assert!(value.starts_with(PREFIX) && value.ends_with(SUFFIX));
-                                    let new_default = &value[PREFIX.len()..value.len() - 2];
-                                    send_update(tx, Update::DefaultSink(new_default.to_owned()));
-                                }
+                            if key == Some("default.audio.sink") && let Some(value) = value {
+                                const PREFIX: &str = "{\"name\":\"";
+                                const SUFFIX: &str = "\"}";
+                                assert!(value.starts_with(PREFIX) && value.ends_with(SUFFIX));
+
+                                let new_default = &value[PREFIX.len()..value.len() - 2];
+                                send_update(tx, Update::DefaultSink(new_default.to_owned()));
                             }
                         }),
                     });
@@ -83,41 +83,15 @@ impl SoundBlock {
                     node.add_listener(NodeEvents {
                         info: None,
                         param: some_closure!([^(tx, node_name)] _id, _type, _index, _next, pod, {
-                            let mut parser = Parser::new(pod.data());
-                            parser
-                                .pop_object::<Prop, ParamType, _>(|object_parser, _id| {
-                                    let mut muted = None;
-                                    let mut volume = None;
-                                    for (prop, _flags, pod) in object_parser {
-                                        match prop {
-                                            Prop::Mute => {
-                                                muted = Some(pod.decode::<bool>().unwrap());
-                                            }
-                                            Prop::SoftVolumes => {
-                                                volume = Some(
-                                                    pod.decode::<&[f32]>()
-                                                        .unwrap()
-                                                        .iter()
-                                                        .copied()
-                                                        .next()
-                                                        .unwrap(),
-                                                );
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                    if let (Some(volume), Some(muted)) = (volume, muted) {
-                                        send_update(
-                                            tx,
-                                            Update::Sink {
-                                                name: node_name.clone(),
-                                                state: SinkState { volume, muted },
-                                            },
-                                        );
-                                    }
-                                    Ok(())
-                                })
-                                .unwrap();
+                            if let Some((volume, muted)) = parse_props(pod) {
+                                send_update(
+                                    tx,
+                                    Update::Sink {
+                                        name: node_name.clone(),
+                                        state: SinkState { volume, muted },
+                                    },
+                                );
+                            }
                         }),
                     });
                     node.subscribe_params(&[ParamType::Props]).unwrap();
@@ -186,4 +160,37 @@ fn send_update(tx: &Sender<Update>, update: Update) {
 
 fn linear_to_user(linear: f32) -> f32 {
     linear.clamp(0.0, 1.0).cbrt()
+}
+
+fn parse_props(pod: &RawPodOwned) -> Option<(f32, bool)> {
+    let mut parser = Parser::new(pod.data());
+
+    let mut muted = None;
+    let mut volume = None;
+
+    parser
+        .pop_object::<Prop, ParamType, _>(|object_parser, _id| {
+            for (prop, _flags, pod) in object_parser {
+                match prop {
+                    Prop::Mute => {
+                        muted = Some(pod.decode::<bool>().unwrap());
+                    }
+                    Prop::SoftVolumes => {
+                        volume = Some(
+                            pod.decode::<&[f32]>()
+                                .unwrap()
+                                .iter()
+                                .copied()
+                                .next()
+                                .unwrap(),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            Ok(())
+        })
+        .unwrap();
+
+    Some((volume?, muted?))
 }
