@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Error, Result};
-use battery::{units::Energy, Manager, State};
+use anyhow::{Error, Result, anyhow};
 use futures_async_stream::try_stream;
+use starship_battery::{Manager, State, units::Energy};
 
 use crate::{Block, BlockData, BlockState};
 
