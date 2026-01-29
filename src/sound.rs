@@ -17,6 +17,7 @@ use pipewire_native_spa::{
     param::{ParamType, props::Prop},
     pod::{RawPodOwned, parser::Parser},
 };
+use serde::Deserialize;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::{Block, BlockData, BlockState};
@@ -24,11 +25,12 @@ use crate::{Block, BlockData, BlockState};
 #[derive(Debug)]
 enum Update {
     DefaultSink(String),
-    Sink { name: String, state: SinkState },
+    DefaultSource(String),
+    Node { name: String, state: NodeState },
 }
 
 #[derive(Debug)]
-struct SinkState {
+struct NodeState {
     volume: f32,
     muted: bool,
 }
@@ -60,21 +62,29 @@ impl SoundBlock {
 
                     metadata.add_listener(MetadataEvents {
                         property: some_closure!([^(tx)] _subject, key, _type, value, {
-                            if key == Some("default.audio.sink") && let Some(value) = value {
-                                const PREFIX: &str = "{\"name\":\"";
-                                const SUFFIX: &str = "\"}";
-                                assert!(value.starts_with(PREFIX) && value.ends_with(SUFFIX));
-
-                                let new_default = &value[PREFIX.len()..value.len() - 2];
-                                send_update(tx, Update::DefaultSink(new_default.to_owned()));
+                            if let Some(value) = value {
+                                match key {
+                                    Some("default.audio.sink") => {
+                                        let new_default =
+                                            serde_json::from_str::<PwDevice>(value).unwrap().name;
+                                        send_update(tx, Update::DefaultSink(new_default.to_owned()));
+                                    },
+                                    Some("default.audio.source") => {
+                                        let new_default =
+                                            serde_json::from_str::<PwDevice>(value).unwrap().name;
+                                        send_update(tx, Update::DefaultSource(new_default.to_owned()));
+                                    },
+                                    _ => {},
+                                }
                             }
                         }),
                     });
                 } else if type_ == types::interface::NODE {
-                    let node_name = if props.get("media.class") == Some("Audio/Sink") {
-                        props.get("node.name").unwrap().to_owned()
-                    } else {
-                        return;
+                    let node_name = match props.get("media.class") {
+                        Some("Audio/Sink") | Some("Audio/Source") => {
+                            props.get("node.name").unwrap().to_owned()
+                        }
+                        _ => return
                     };
 
                     let obj = reg.bind(id, type_, version).unwrap();
@@ -86,9 +96,9 @@ impl SoundBlock {
                             if let Some((volume, muted)) = parse_props(pod) {
                                 send_update(
                                     tx,
-                                    Update::Sink {
+                                    Update::Node {
                                         name: node_name.clone(),
-                                        state: SinkState { volume, muted },
+                                        state: NodeState { volume, muted },
                                     },
                                 );
                             }
@@ -115,38 +125,56 @@ impl Block for SoundBlock {
     #[try_stream(boxed, ok = BlockData, error = Error)]
     async fn block_data_stream(&mut self) {
         let mut default_sink = None;
-        let mut sink_states = HashMap::new();
+        let mut default_source = None;
+        let mut node_states = HashMap::new();
 
         while let Some(update) = self.rx.recv().await {
-            let updated_state = match update {
-                Update::DefaultSink(name) if default_sink.as_deref() != Some(&*name) => {
-                    default_sink = Some(name.clone());
-                    sink_states.get(&name)
+            match update {
+                Update::DefaultSink(name) => {
+                    default_sink = Some(name);
                 }
-                Update::Sink { name, state } => {
-                    sink_states.insert(name.clone(), state);
-                    if Some(&*name) == default_sink.as_deref() {
-                        sink_states.get(&name)
+                Update::DefaultSource(name) => {
+                    default_source = Some(name);
+                }
+                Update::Node { name, state } => {
+                    node_states.insert(name, state);
+                }
+            }
+
+            let sink_state = default_sink.as_ref().and_then(|ds| node_states.get(ds));
+            let source_state = default_source.as_ref().and_then(|ds| node_states.get(ds));
+            let sink_volume = match sink_state {
+                Some(ss) => {
+                    if ss.muted {
+                        "--".to_string()
                     } else {
-                        None
+                        ((linear_to_user(ss.volume) * 100.0).round() as u8).to_string()
                     }
                 }
-                _ => None,
+                None => "???".to_owned(),
             };
-
-            if let Some(state) = updated_state {
-                let volume = if state.muted {
-                    "--".to_string()
-                } else {
-                    ((linear_to_user(state.volume) * 100.0).round() as u8).to_string()
-                };
-                yield BlockData {
-                    text: format!("S: {}%", volume),
-                    state: BlockState::Normal,
-                };
-            }
+            let mic_state = match source_state {
+                Some(ss) => {
+                    if ss.muted {
+                        "M"
+                    } else {
+                        "L"
+                    }
+                }
+                None => "???",
+            };
+            yield BlockData {
+                text: format!("S: {}%  M: {}", sink_volume, mic_state),
+                state: BlockState::Normal,
+            };
         }
     }
+}
+
+// Not entirely what the right Pipewire terminology is for this
+#[derive(Deserialize)]
+pub struct PwDevice<'a> {
+    name: &'a str,
 }
 
 fn send_update(tx: &Sender<Update>, update: Update) {
