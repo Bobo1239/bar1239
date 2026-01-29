@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Boris-Chengbiao Zhou <bobo1239@web.de>"]
 edition = "2018"
 
+[profile.release]
+codegen-units = 1
+lto = true
+
 [dependencies]
 anyhow = "1.0.25"
 serde = { version = "1.0", features = ["derive"] }
@@ -14,8 +18,9 @@ futures = "0.3.1"
 inotify = "0.11.0"
 chrono = "0.4.10"
 battery = "0.7.5"
-libpulse-binding = "2.16.0"
+pipewire-native = "0.1.3"
+pipewire-native-spa = "0.1.3"
 
-[profile.release]
-codegen-units = 1
-lto = true
+[patch.crates-io]
+# TODO: Remove once there's a release with https://gitlab.freedesktop.org/pipewire/pipewire-native-rs/-/merge_requests/8
+pipewire-native-spa = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-native-rs.git" }

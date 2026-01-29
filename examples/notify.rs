@@ -4,7 +4,8 @@ fn main() {
     let mut inotify = Inotify::init().expect("Failed to initialize inotify");
 
     inotify
-        .add_watch(
+        .watches()
+        .add(
             "/sys/class/backlight/intel_backlight/actual_brightness",
             WatchMask::MODIFY | WatchMask::CREATE | WatchMask::DELETE,
         )
