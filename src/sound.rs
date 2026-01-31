@@ -148,7 +148,7 @@ impl Block for SoundBlock {
                     if ss.muted {
                         "--".to_string()
                     } else {
-                        ((linear_to_user(ss.volume) * 100.0).round() as u8).to_string()
+                        ((ss.volume.cbrt() * 100.0).round() as u8).to_string()
                     }
                 }
                 None => "???".to_owned(),
@@ -184,10 +184,6 @@ fn send_update(tx: &Sender<Update>, update: Update) {
             panic!("receiver dropped");
         }
     });
-}
-
-fn linear_to_user(linear: f32) -> f32 {
-    linear.clamp(0.0, 1.0).cbrt()
 }
 
 fn parse_props(pod: &RawPodOwned) -> Option<(f32, bool)> {
