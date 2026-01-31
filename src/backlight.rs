@@ -7,7 +7,7 @@ use std::{
     io::{Read, Seek, SeekFrom},
 };
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{Error, Result, anyhow};
 use futures::stream::StreamExt;
 use futures_async_stream::try_stream;
 use inotify::{Inotify, WatchMask};
@@ -32,7 +32,7 @@ impl BacklightBlock {
                 inotify.watches().add(&path, WatchMask::MODIFY)?;
                 Ok(BacklightBlock {
                     inotify: Some(inotify),
-                    file: File::open(path.join("actual_brightness"))?,
+                    file: File::open(path.join("brightness"))?,
                     max_brightness: fs::read_to_string(path.join("max_brightness"))?
                         .trim()
                         .parse::<f32>()?,
