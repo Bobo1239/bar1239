@@ -203,7 +203,7 @@ fn parse_props(pod: &RawPodOwned) -> Option<(f32, bool)> {
                     Prop::Mute => {
                         muted = Some(pod.decode::<bool>().unwrap());
                     }
-                    Prop::SoftVolumes => {
+                    Prop::ChannelVolumes => {
                         volume = Some(
                             pod.decode::<&[f32]>()
                                 .unwrap()
