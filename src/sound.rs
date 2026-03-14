@@ -26,13 +26,16 @@ use crate::{Block, BlockData, BlockState};
 enum Update {
     DefaultSink(String),
     DefaultSource(String),
-    Node { name: String, state: NodeState },
+    Node { id: u32, state: NodeState },
+    NodeInfo { id: u32, driver_id: Option<u32> },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct NodeState {
+    name: String,
     volume: f32,
     muted: bool,
+    driver_id: Option<u32>,
 }
 
 pub struct SoundBlock {
@@ -67,12 +70,14 @@ impl SoundBlock {
                                     Some("default.audio.sink") => {
                                         let new_default =
                                             serde_json::from_str::<PwDevice>(value).unwrap().name;
-                                        send_update(tx, Update::DefaultSink(new_default.to_owned()));
+                                        send_update(tx,
+                                            Update::DefaultSink(new_default.to_owned()));
                                     },
                                     Some("default.audio.source") => {
                                         let new_default =
                                             serde_json::from_str::<PwDevice>(value).unwrap().name;
-                                        send_update(tx, Update::DefaultSource(new_default.to_owned()));
+                                        send_update(tx,
+                                            Update::DefaultSource(new_default.to_owned()));
                                     },
                                     _ => {},
                                 }
@@ -81,7 +86,8 @@ impl SoundBlock {
                     });
                 } else if type_ == types::interface::NODE {
                     let node_name = match props.get("media.class") {
-                        Some("Audio/Sink") | Some("Audio/Source") => {
+                        Some("Audio/Sink") | Some("Audio/Source") |
+                        Some("Audio/Source/Internal") | Some("Audio/Sink/Internal") => {
                             props.get("node.name").unwrap().to_owned()
                         }
                         _ => return
@@ -91,14 +97,30 @@ impl SoundBlock {
                     let node = obj.downcast::<Node>().unwrap();
 
                     node.add_listener(NodeEvents {
-                        info: None,
-                        param: some_closure!([^(tx, node_name)] _id, _type, _index, _next, pod, {
+                        info: some_closure!([^(tx)] node_info, {
+                            assert_eq!(node_info.id, id);
+                            if let Some(driver_id) = node_info.props.get_u32("node.driver-id") {
+                                send_update(
+                                    tx,
+                                    Update::NodeInfo {
+                                        id,
+                                        driver_id: Some(driver_id)
+                                    },
+                                );
+                            }
+                        }),
+                        param: some_closure!([^(tx, node_name, id)] _id, _type, _idx, _next, pod, {
                             if let Some((volume, muted)) = parse_props(pod) {
                                 send_update(
                                     tx,
                                     Update::Node {
-                                        name: node_name.clone(),
-                                        state: NodeState { volume, muted },
+                                        id: *id,
+                                        state: NodeState {
+                                            name: node_name.clone(),
+                                            volume,
+                                            muted,
+                                            driver_id: None
+                                        },
                                     },
                                 );
                             }
@@ -127,6 +149,7 @@ impl Block for SoundBlock {
         let mut default_sink = None;
         let mut default_source = None;
         let mut node_states = HashMap::new();
+        let mut name_to_id = HashMap::new();
 
         while let Some(update) = self.rx.recv().await {
             match update {
@@ -136,13 +159,38 @@ impl Block for SoundBlock {
                 Update::DefaultSource(name) => {
                     default_source = Some(name);
                 }
-                Update::Node { name, state } => {
-                    node_states.insert(name, state);
+                Update::Node { id, state } => {
+                    let entry: &mut NodeState = node_states.entry(id).or_default();
+                    entry.name = state.name;
+                    entry.muted = state.muted;
+                    entry.volume = state.volume;
+                    // Don't overwrite entry.driver_id since it comes from another `Update`
+                    name_to_id.insert(entry.name.clone(), id);
+                }
+                Update::NodeInfo { id, driver_id } => {
+                    let entry = node_states.entry(id).or_default();
+                    entry.driver_id = driver_id;
                 }
             }
 
-            let sink_state = default_sink.as_ref().and_then(|ds| node_states.get(ds));
-            let source_state = default_source.as_ref().and_then(|ds| node_states.get(ds));
+            let resolve_node_state = |name| {
+                name_to_id
+                    .get(name)
+                    .and_then(|id| node_states.get(id))
+                    .map(|ns| {
+                        if ns.name.contains("bluez") {
+                            ns.driver_id
+                                .and_then(|drv_id| node_states.get(&drv_id))
+                                .unwrap_or(ns)
+                        } else {
+                            ns
+                        }
+                    })
+            };
+
+            let sink_state = default_sink.as_ref().and_then(resolve_node_state);
+            let source_state = default_source.as_ref().and_then(resolve_node_state);
+
             let sink_volume = match sink_state {
                 Some(ss) => {
                     if ss.muted {
@@ -163,6 +211,10 @@ impl Block for SoundBlock {
                 }
                 None => "???",
             };
+            // dbg!(&default_sink);
+            // dbg!(&default_source);
+            // dbg!(&name_to_id);
+            // dbg!(&node_states);
             yield BlockData {
                 text: format!("S: {}%  M: {}", sink_volume, mic_state),
                 state: BlockState::Normal,
