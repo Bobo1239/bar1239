@@ -20,7 +20,3 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.44"
 starship-battery = "0.10.3"
 tokio = { version = "1.19.2", features = ["full"] }
-
-[patch.crates-io]
-# TODO: Remove once there's a release with https://gitlab.freedesktop.org/pipewire/pipewire-native-rs/-/merge_requests/8
-pipewire-native-spa = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-native-rs.git" }
